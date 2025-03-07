@@ -6,10 +6,7 @@ import (
 	"MygateBot/config"
 	"MygateBot/logs"
 	"MygateBot/model"
-	"context"
 	"go.uber.org/zap"
-	"sync"
-	"time"
 )
 
 func init() {
@@ -21,70 +18,80 @@ func main() {
 		logs.I().Info("没有配置Token信息")
 		return
 	}
-	var wg sync.WaitGroup
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	//var wg sync.WaitGroup
+	//ctx, cancel := context.WithCancel(context.Background())
+	//defer cancel()
+	var tokenList []model.TokenRequest
 	for _, token := range tokens {
+		var tokenModel model.TokenRequest
 		// 获取用户节点
 		nodes := api.GetUserNode(token.Token, token.Proxies[0])
 		logs.I().Info("获取用户节点成功 ：", zap.Any("token", token.Remark), zap.Any("nodes", nodes))
 		// 注册节点
 		for _, proxy := range token.Proxies {
-			// 注册节点
-			node := api.RegisterNode(token.Token, proxy, "")
-			logs.I().Info("注册节点成功 ：", zap.Any("node", node))
-
+			checkProxy := api.CheckProxy(proxy)
+			logs.I().Info("检查代理 ：", zap.Any("checkProxy", checkProxy["ip"]))
+			tokenModel.Token = token.Token
+			tokenModel.Remark = token.Remark
+			tokenModel.Proxy = proxy
+			tokenModel.Ip = checkProxy["ip"]
+			// 匹配 IP 并赋值 NodeId
 			for _, node := range nodes.Data.Item {
-				wg.Add(1)
-				go func(nodeID string) {
-					defer wg.Done()
-					b := bot.NewBot(token.Token, proxy, nodeID)
-					if err := b.StartBot(); err != nil {
-						logs.I().Error("启动机器人失败", zap.Error(err))
-					}
-					// 监听上下文取消信号
-					select {
-					case <-ctx.Done():
-						logs.I().Info("上下文被取消，停止机器人", zap.String("nodeID", nodeID))
-					}
-				}(node.ID)
+				if node.IP == tokenModel.Ip {
+					tokenModel.NodeId = node.ID
+					break
+				}
 			}
+			tokenList = append(tokenList, tokenModel)
 		}
 	}
-	// 设置时间间隔为 11 分钟
-	interval := 11 * time.Minute
-	// 创建 Ticker
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	logs.I().Info("定时任务启动...")
-	// 启动定时任务
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				logs.I().Info("定时任务被取消")
-				return
-			case <-ticker.C:
-				logs.I().Info("定时任务触发")
-				var taskWg sync.WaitGroup
-				for _, token := range tokens {
-					taskWg.Add(1)
-					go func(ctx context.Context, token model.Token) {
-						defer taskWg.Done()
-						bot.GetUserInfo(token.Token, token.Proxies[0])
-						// 监听上下文取消信号
-						select {
-						case <-ctx.Done():
-							logs.I().Info("上下文被取消，停止获取用户信息", zap.String("token", token.Token))
-						default:
-						}
-					}(ctx, token)
-				}
-				taskWg.Wait()
-			}
-		}
-	}()
+	logs.I().Info("封装用户节点成功 ：", zap.Any("tokenList", tokenList))
 
-	wg.Wait()
+	// 注册 节点，启动机器人
+	for _, t := range tokenList {
+		// 注册节点
+		nodeResp := api.RegisterNode(t.Token, t.Proxy, t.NodeId)
+		logs.I().Info("注册节点成功 ：", zap.Any("UserMail", t.Remark), zap.Any("Ip", t.Ip), zap.Any("NodeId", t.NodeId), zap.Any("Resp", nodeResp))
+		go func(t model.TokenRequest) {
+			b := bot.NewBot(t)
+			if err := b.StartBot(); err != nil {
+				logs.I().Error("启动机器人失败", zap.Error(err))
+			}
+		}(t)
+	}
+	//}
+	// 设置时间间隔为 11 分钟
+	//interval := 11 * time.Minute
+	//// 创建 Ticker
+	//ticker := time.NewTicker(interval)
+	//defer ticker.Stop()
+	//logs.I().Info("定时任务启动...")
+	//// 启动定时任务
+	//go func() {
+	//	for {
+	//		select {
+	//		case <-ctx.Done():
+	//			logs.I().Info("定时任务被取消")
+	//			return
+	//		case <-ticker.C:
+	//			logs.I().Info("定时任务触发")
+	//			var taskWg sync.WaitGroup
+	//			for _, token := range tokens {
+	//				taskWg.Add(1)
+	//				go func(ctx context.Context, token model.Token) {
+	//					defer taskWg.Done()
+	//					bot.GetUserInfo(token.Token, token.Proxies[0])
+	//					// 监听上下文取消信号
+	//					select {
+	//					case <-ctx.Done():
+	//						logs.I().Info("上下文被取消，停止获取用户信息", zap.String("token", token.Token))
+	//					default:
+	//					}
+	//				}(ctx, token)
+	//			}
+	//			taskWg.Wait()
+	//		}
+	//	}
+	//}()
 	select {}
 }

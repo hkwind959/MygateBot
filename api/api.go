@@ -117,3 +117,23 @@ func GetUserInfo(token string, proxy string) string {
 	}
 	return ""
 }
+
+// CheckProxy 检查代理
+func CheckProxy(proxy string) map[string]string {
+	if proxy == "" {
+		logs.I().Error("代理为空")
+		return nil
+	}
+	client := utils.NewHttpClient(proxy)
+	resp, err := client.Get(constant.CheckProxyURL, nil, nil, nil)
+	if err != nil {
+		logs.I().Error("代理异常：", zap.String(proxy, err.Error()))
+		return nil
+	}
+	var result map[string]string
+	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+		logs.I().Error("解析代理返回失败：", zap.Error(err))
+		return nil
+	}
+	return result
+}
