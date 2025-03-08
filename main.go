@@ -52,12 +52,14 @@ func main() {
 		// 注册节点
 		nodeResp := api.RegisterNode(t.Token, t.Proxy, t.NodeId)
 		logs.I().Info("注册节点成功 ：", zap.Any("UserMail", t.Remark), zap.Any("Ip", t.Ip), zap.Any("NodeId", t.NodeId), zap.Any("Resp", nodeResp))
-		go func(t model.TokenRequest) {
-			b := bot.NewBot(t)
-			if err := b.StartBot(); err != nil {
-				logs.I().Error("启动机器人失败", zap.Error(err))
+		b := bot.NewBot(t)
+		go func() {
+			err := b.StartBot()
+			if err != nil {
+				logs.I().Info("启动机器人失败", zap.Error(err))
 			}
-		}(t)
+			logs.I().Info("启动机器人成功")
+		}()
 	}
 	//}
 	// 设置时间间隔为 11 分钟

@@ -74,7 +74,7 @@ func (b *Bot) StartBot() error {
 
 	err = wsClient.Connect(wsUrl, header)
 	if err != nil {
-		maxRetries := 150
+		maxRetries := 50000
 		backoff := time.Second * 5    // 初始重试间隔
 		maxBackoff := time.Minute * 5 // 最大重试间隔
 		for i := 0; i < maxRetries; i++ {
@@ -109,11 +109,11 @@ func (b *Bot) StartBot() error {
 			b.writeChan <- fmt.Sprintf(`40{"token":"Bearer %s"}`, b.Token)
 		}
 		logs.I().Info("WebSocket客户端连接成功: ", zap.String("User", b.Remark), zap.String("Ip", b.Ip), zap.String("NodeId", b.NodeId))
-		// 发送消息
-		go b.writeMessage()
-		// 接收消息
-		go b.receiveMessage()
 	}
+	// 发送消息
+	go b.writeMessage()
+	// 接收消息
+	go b.receiveMessage()
 	return nil
 }
 
@@ -144,7 +144,7 @@ func (b *Bot) receiveMessage() {
 	for {
 		conn := b.conn
 		if conn == nil {
-			logs.I().Error("连接未初始化，等待重新连接")
+			//logs.I().Error("连接未初始化，等待重新连接")
 			time.Sleep(time.Second) // 等待一段时间后重试
 			continue
 		}
@@ -180,15 +180,12 @@ func (b *Bot) reconnect() {
 		logs.I().Error("重新连接失败 :", zap.String("User", b.Remark), zap.String("IP", b.Ip), zap.String("NodeId", b.NodeId))
 		backoff := time.Second * 5    // 初始重试间隔
 		maxBackoff := time.Minute * 5 // 最大重试间隔
-		for i := 0; i < 150; i++ {
+		for i := 0; i < 50000; i++ {
 			time.Sleep(backoff)
 			backoff *= 2 // 每次重试间隔翻倍
 			if backoff > maxBackoff {
 				backoff = maxBackoff
 			}
-			// 添加随机因子以减少冲突
-			jitter := time.Duration(rand.Int63n(int64(backoff)))
-			time.Sleep(jitter)
 
 			if err := b.StartBot(); err == nil {
 				logs.I().Info("重新连接成功")
